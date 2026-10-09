@@ -324,9 +324,15 @@ characteristic.
 - With exact data this is consistent, and the right-hand side converges at
   order `q`.
 - In a run, error that reaches such a face meets the exact ghost values. The
-  result converges at `q − 1` asymptotically (measured: 3.0 at `q = 4` and
-  1.06 at `q = 2` on a superluminal outflow face; 3.5 and falling on a
-  timelike face at fine resolution).
+  result converges at `q − 1` asymptotically. Measured:
+  - on a superluminal outflow face, 3.0 at `q = 4` and 1.06 at `q = 2`;
+  - on a timelike face at fine resolution, 3.5 and falling;
+  - on the holes, see [Measured results](#measured-results).
+
+  Two mechanisms contribute. At `q ≥ 4` the stencil reaches two ghost
+  layers, and exact data on both is more than the error equation's one
+  boundary condition. The advection term `β^d ∂_d Π` reads `Π`'s ghosts,
+  which imposes the outgoing `Π` as well.
 
 Convergence tests therefore run short, or periodic. An outflow face is
 precisely what excision has to close without data, and that is
@@ -419,8 +425,36 @@ All on an Apple M3 Pro, `Float64`.
   (`test/evolution_tests.jl`).
 - **Runs converge at order `q`** on periodic domains: Minkowski at `D = 1, 2,
   3` and the gauge wave at `D = 2`.
-- **Static Kerr–Schild `a = 0.6`** on the box `[2.5, 4.5]²×[−1, 1]` to
-  `t = 1/2` converges at 4.2 (`N = 8, 16, 24`, `q = 4`).
+- **TreeExcision's ladder, on the box `[3, 5]×[−1, 1]²`** outside the
+  horizon. The right-hand side at the exact state converges at `q` on every
+  rung (`q = 2`: 2.1–2.3; `q = 4`: 4.4–4.7; `N = 8, 12, 16`). Runs to
+  `t = 1/4` at `q = 4`, `N = 16, 24, 32`, measured on the L2 error:
+
+  | case | L2 error at N = 32 | rate |
+  |---|---|---|
+  | a = 0 | 1.1e-6 | 3.64 |
+  | a = 0.6 | 6.5e-7 | 3.62 |
+  | a = 0.9 | 2.5e-7 | 3.59 |
+  | v = 0.3 | 1.2e-6 | 3.14 |
+  | v = 0.6 | 5.8e-7 | 2.66 |
+  | a = 0.6, v = 0.6 | 4.3e-7 | 2.66 |
+
+  - The rates are below `q` because Dirichlet data on every ghost
+    over-specify the outgoing modes (see [Boundaries](#boundaries)). They
+    tend to `q − 1`: the static `a = 0.6` hole runs at 2.9 at `N = 8, 12, 16`
+    and at 3.6 at `N = 16, 24, 32`. Shrinking the step by 16 changes nothing,
+    so this is spatial.
+  - At `q = 2` the same runs give 1.6 on the static holes and 0.9 on the
+    moving ones.
+  - The advection term reads `Π`'s ghosts, so a larger shift through the
+    faces costs more.
+- **The river at `D = 2`** (`[3, 5]×[−1, 1]`, `t = 1/2`, `N = 16, 32, 64`)
+  converges at 4.0.
+- **Symmetric domains.** A reflecting face at `z = 0`, and the rotating
+  quadrant above the hole, each reproduce the full box to `1e-11` relative
+  after four steps with dissipation. The full box is itself symmetric only
+  to its truncation error, because a vertex-centered block evolves its low
+  boundary plane while the hook fills its high one.
 - **Noise and dissipation.** Noise of `1e-8` was put on a quiet state on a
   periodic `D = 2` mesh, and the first unit of time was discarded as a
   transient. Over the next three time units the noise grows only on the
@@ -446,7 +480,7 @@ All on an Apple M3 Pro, `Float64`.
 | W0 | skeleton, stencils, provider | done |
 | W1 | backgrounds, coefficients, exact solutions | done |
 | W2 | right-hand side, integrator, flat and curved convergence, threads, types | done |
-| W3 | hole cases (a = 0, 0.6, 0.9; v = 0.3, 0.6; a = 0.6 with v = 0.6), river, reflecting and rotating domains | |
+| W3 | hole cases (a = 0, 0.6, 0.9; v = 0.3, 0.6; a = 0.6 with v = 0.6), river, reflecting and rotating domains | done |
 | W4 | refinement criterion, driver, checkpoint and restart (TreeIOHDF5) | |
 | W5 | device tests, benchmark | |
 
