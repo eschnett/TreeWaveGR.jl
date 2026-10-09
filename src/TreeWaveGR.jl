@@ -29,6 +29,9 @@ include("backgrounds.jl")
 include("exact.jl")
 include("boundaries.jl")
 include("coefficients.jl")
+include("evolution.jl")
+include("stepping.jl")
+include("initialdata.jl")
 
 # Stencils and the provider seam
 export derivative_weights, dissipation_weights, dissipation_rank
@@ -46,5 +49,14 @@ export exact_value, exact_state
 
 # Boundaries
 export even_parity, identity_rotation, has_outer_face, dirichlet
+
+# The right-hand side and the integrator
+export wave_rhs_point, WaveProblem, is_stationary, prepare_rhs!, launch_rhs!, wave_rhs!
+export max_speed, convergence_rate
+export state_partition, wave_integrator, wave_solve, wave_steps
+
+# Cases
+export WaveCase, with_dissipation, wave_forest, state_fieldset, wave_operators
+export exact_callback, fill_exact!, exact_statevector, wave_errors
 
 end # module TreeWaveGR

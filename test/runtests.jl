@@ -18,4 +18,7 @@ using TreeWaveGR
     include("stencils_tests.jl")
     include("backgrounds_tests.jl")
     include("exact_tests.jl")
+    include("evolution_tests.jl")
+    include("type_tests.jl")
+    include("threading_tests.jl")
 end

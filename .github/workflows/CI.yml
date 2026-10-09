@@ -1,0 +1,52 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+    tags: ["*"]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Julia ${{ matrix.version }} - ${{ matrix.os }} - ${{ matrix.threads || 1 }} thread(s)
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # Julia 1.11 is the floor: the unregistered dependencies are located
+        # by `[sources]` entries, a 1.11 key.
+        version: ["1.11", "1"]
+        os: [ubuntu-latest, macOS-latest]
+        include:
+          - version: "1"
+            os: ubuntu-latest
+            threads: 4
+    steps:
+      - uses: actions/checkout@v7
+      - uses: julia-actions/setup-julia@v3
+        with:
+          version: ${{ matrix.version }}
+      - uses: julia-actions/cache@v3
+      - uses: julia-actions/julia-buildpkg@v1
+      # Stated, although it is the action's default: the RHS kernel's reads
+      # are `@inbounds`, and `--check-bounds=yes` is the only run that can
+      # catch a stencil walking out of its block.
+      - uses: julia-actions/julia-runtest@v1
+        with:
+          check_bounds: 'yes'
+          coverage: ${{ (matrix.threads || 1) == 1 }}
+        env:
+          JULIA_NUM_THREADS: ${{ matrix.threads || 1 }}
+      - uses: julia-actions/julia-processcoverage@v1
+        if: ${{ (matrix.threads || 1) == 1 }}
+      - uses: codecov/codecov-action@v7
+        if: ${{ (matrix.threads || 1) == 1 }}
+        with:
+          files: lcov.info
+          token: ${{ secrets.CODECOV_TOKEN }}
+          fail_ci_if_error: false
