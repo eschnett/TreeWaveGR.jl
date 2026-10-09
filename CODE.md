@@ -470,7 +470,17 @@ is TreeGH's and TreeHydro's chunk loop:
   - the coefficient fill;
   - the exact state, as `fill_by_coordinates!` and as the Dirichlet hook.
 
-  Callbacks capture only `isbits` values. Device tests are W5.
+  Callbacks capture only `isbits` values. This includes the analytic
+  coefficients, so SpacetimeMetrics' metric and ForwardDiff's dual pass
+  through it run in the kernel. A case is written in convenient literals;
+  `retype(T, case)` rebuilds its background, solution and domain in the
+  run's type at every entry point. A `Float64` parameter in a `Float32`
+  kernel would compute in `Float64`, which Metal refuses to compile.
+  `test/device_tests.jl` runs the right-hand side, a solve and an adaptive
+  run on the device and compares them with the host. The device runs give
+  the same mesh, and the same states to the type's precision. Set
+  `TREEWAVEGR_TEST_BACKEND=metal` or `cuda` to run it on a device; it runs
+  on `CPU()` otherwise.
 
 ## Measured results
 
@@ -513,6 +523,25 @@ All on an Apple M3 Pro, `Float64`.
   in chunks of `1/32`. The adaptive run's L2 error is the uniform run's at
   its finest resolution (2.354e-4 against 2.354e-4) on at most 187 blocks of
   the 256 that resolution needs everywhere.
+- **The cost of a right-hand side** (`bench/rhs.jl`): the hole box at
+  `q = 4` with dissipation, `N = 16`, 4³ roots (262 144 points), in ns per
+  point:
+
+  | | 1 thread `Float64` (32 768 points) | 8 threads `Float64` | Metal `Float32` |
+  |---|---|---|---|
+  | static hole, sampled: kernel | 27.1 | 7.1 | 1.5 |
+  | static hole, sampled: `wave_rhs!` | 83.7 | 22.2 | 7.0 |
+  | static hole, analytic: kernel | 141.7 | 29.9 | 3.6 |
+  | boosted hole, analytic: kernel | 184.9 | 38.2 | 3.9 |
+  | boosted hole, analytic: `wave_rhs!` | 300.0 | 58.8 | 9.2 |
+
+  - **The ghost fill dominates** the sampled right-hand side on the CPU.
+  - **The analytic coefficients cost 5× the sampled ones on the CPU** — a
+    dual pass through the metric at every point — and 2.4× on the GPU,
+    where the stencils' memory traffic hides more of it. This is why
+    `:auto` samples a stationary background.
+  - **No SIMD lanes or performance tuning yet.** TreeExcision's `GOAL.md`
+    defers both.
 - **Symmetric domains.** A reflecting face at `z = 0`, and the rotating
   quadrant above the hole, each reproduce the full box to `1e-11` relative
   after four steps with dissipation. The full box is itself symmetric only
@@ -545,7 +574,7 @@ All on an Apple M3 Pro, `Float64`.
 | W2 | right-hand side, integrator, flat and curved convergence, threads, types | done |
 | W3 | hole cases (a = 0, 0.6, 0.9; v = 0.3, 0.6; a = 0.6 with v = 0.6), river, reflecting and rotating domains | done |
 | W4 | refinement criterion, driver, checkpoint and restart (TreeIOHDF5) | done |
-| W5 | device tests, benchmark | |
+| W5 | device tests, benchmark | done |
 
 ## Possible extensions
 

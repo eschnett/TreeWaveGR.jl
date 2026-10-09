@@ -22,5 +22,6 @@ using TreeWaveGR
     include("hole_tests.jl")
     include("driver_tests.jl")
     include("type_tests.jl")
+    include("device_tests.jl")
     include("threading_tests.jl")
 end

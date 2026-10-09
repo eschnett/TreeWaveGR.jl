@@ -60,7 +60,7 @@ export max_speed, convergence_rate
 export state_partition, wave_integrator, wave_solve, wave_steps
 
 # Cases
-export WaveCase, with_dissipation, wave_forest, state_fieldset, wave_operators
+export WaveCase, retype, with_dissipation, wave_forest, state_fieldset, wave_operators
 export exact_callback, fill_exact!, exact_statevector, wave_errors
 
 # Refinement, the driver, checkpoints

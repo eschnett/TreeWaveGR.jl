@@ -51,6 +51,7 @@ function evolve!(::Type{T}, case::WaveCase{D}; N::Integer, roots, q::Integer=4, 
                  maxpasses::Integer=10, coefficients::Symbol=:auto, backend=CPU(),
                  observer=nothing, checkpoint=nothing, checkpoint_every::Integer=1,
                  restart=nothing, types=()) where {T,D}
+    case = retype(T, case)
     t_end, chunk = convert(T, t_end), convert(T, chunk)
     chunk > 0 || throw(ArgumentError("chunk must be positive, got $chunk"))
     nchunks = ceilint(t_end / chunk)

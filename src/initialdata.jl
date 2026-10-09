@@ -64,6 +64,53 @@ function check_slice(bg::Background{D}, extents) where {D}
 end
 
 """
+    retype(T, x)
+
+`x` with every floating-point number in it converted to `T`: a number, a
+static array, a tuple, a `WaveCase`, a `Background`, an `ExactSolution` or a
+SpacetimeMetrics metric — the last two rebuilt field by field through their
+unparameterized constructors, which every type here has.
+
+A case is written in whatever literals are convenient — `KerrSchild(1.0,
+0.6)` is `Float64` — and a kernel in `Float32` that reads a `Float64`
+parameter computes in `Float64`, which a device without hardware `Float64`
+refuses to compile. So every entry point that builds a run (`WaveProblem`,
+`fill_exact!`, `wave_errors`, `evolve!`) retypes the case to the run's
+type once, host-side.
+"""
+retype(::Type{T}, x::AbstractFloat) where {T} = convert(T, x)
+retype(::Type{T}, x::Union{Integer,Rational,Symbol,Nothing}) where {T} =
+    x isa Rational ? convert(T, x) : x
+retype(::Type{T}, x::Tuple) where {T} = map(y -> retype(T, y), x)
+retype(::Type{T}, x::StaticArray) where {T} =
+    eltype(x) <: AbstractFloat ? similar_type(x, T)(map(y -> retype(T, y), Tuple(x))) : x
+retype(::Type{T}, bg::Background{D}) where {T,D} = Background{D}(retype(T, bg.metric))
+function retype(::Type{T}, x::Union{AbstractMetric,ExactSolution}) where {T}
+    fields = map(f -> retype(T, getfield(x, f)), fieldnames(typeof(x)))
+    return isempty(fields) ? x : typeof(x).name.wrapper(fields...)
+end
+function retype(::Type{T}, c::WaveCase{D,B,S,T}) where {D,B,S,T}
+    # Already in `T` throughout? The common case, and cheap to recognise.
+    retyped_already(c.background.metric, T) && retyped_already(c.solution, T) && return c
+    return _retype_case(T, c)
+end
+retype(::Type{T}, c::WaveCase) where {T} = _retype_case(T, c)
+
+_retype_case(::Type{T}, c::WaveCase) where {T} =
+    WaveCase(retype(T, c.background), retype(T, c.solution);
+             extents=retype(T, c.extents), periodic=c.periodic, reflecting=c.reflecting,
+             rotating=c.rotating[1] == 0 ? nothing : c.rotating, ε=convert(T, c.ε))
+
+# Whether every floating-point number reachable from `x`'s fields is a `T`.
+function retyped_already(x, ::Type{T}) where {T}
+    x isa AbstractFloat && return x isa T
+    x isa StaticArray && return !(eltype(x) <: AbstractFloat) || eltype(x) === T
+    x isa Union{Integer,Symbol,Nothing} && return true
+    x isa Tuple && return all(y -> retyped_already(y, T), x)
+    return all(f -> retyped_already(getfield(x, f), T), fieldnames(typeof(x)))
+end
+
+"""
     with_dissipation(case, ε) -> WaveCase
 
 `case` with the Kreiss–Oliger strength `ε`.
@@ -132,7 +179,8 @@ end
 
 Every owned point of `fs` set to the case's exact state at time `t`.
 """
-fill_exact!(fs::FieldSet, case::WaveCase, t) = fill_by_coordinates!(exact_callback(case, t), fs)
+fill_exact!(fs::FieldSet{T}, case::WaveCase, t) where {T} =
+    fill_by_coordinates!(exact_callback(retype(T, case), t), fs)
 
 """
     exact_statevector(fs, case, t) -> u
@@ -160,6 +208,7 @@ convergence test is built from.
 function wave_errors(::Type{T}, case::WaveCase; N::Integer, roots, q::Integer=4,
                      t_end, cfl=1 // 4, refined::Bool=false, coefficients=:auto,
                      backend=CPU()) where {T}
+    case = retype(T, case)
     forest = wave_forest(T, case; N=N, roots=roots, refined=refined)
     fs = state_fieldset(forest, q; backend=backend)
     p = WaveProblem(fs, GhostSchedule(fs, wave_operators(q)), case; q=q,

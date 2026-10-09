@@ -42,6 +42,21 @@ julia --project=. -e 'using Pkg; Pkg.test(; julia_args = ["--check-bounds=yes", 
 `Pkg.test` does not inherit `-t`; the thread-independence test spawns its
 own subprocess at another count either way.
 
+Run on a GPU. No device package is a dependency, so this needs an
+environment of its own — once, then reuse it:
+
+```bash
+julia --project=/tmp/twgrgpu -e 'using Pkg; Pkg.develop(path=".")
+    Pkg.add(url="https://github.com/eschnett/SpacetimeMetrics.jl", rev="main")
+    Pkg.add(["Metal", "KernelAbstractions", "MultiFloats", "TreeAMR", "Test",
+             "StaticArrays", "ForwardDiff", "Random", "LinearAlgebra"])'
+TREEWAVEGR_TEST_BACKEND=metal julia --project=/tmp/twgrgpu test/runtests.jl
+julia --project=/tmp/twgrgpu bench/rhs.jl --backend=metal --type=f32
+```
+
+Unset, `TREEWAVEGR_TEST_BACKEND` runs `test/device_tests.jl` on `CPU()`.
+Metal has no `Float64`, so the device tests run in `Float32` there.
+
 ## Things that will bite
 
 - **The dependencies come from three places.** TreeAMR is in the General
@@ -70,6 +85,12 @@ own subprocess at another count either way.
   `ConstantShift` with `PolynomialWave`; `tofloat64` and `ceilint` are the
   conversions (`src/precision.jl`). `Float64(::Float32x2)` is a
   `MethodError`.
+- **A case in `Float64` literals is retyped at every entry point**
+  (`retype`). A new entry point that builds a run must call it, or a
+  `Float32` kernel computes in `Float64` and Metal refuses to compile it
+  ("unsupported use of double value"). A new metric or solution type needs
+  an unparameterized constructor taking its fields, which `retype` rebuilds
+  it with.
 - **Closures that become kernel arguments capture only `isbits` values** —
   never a `Type` (use `convert(eltype(x), t)` / `oftype`), never a name
   assigned twice (a `Core.Box`).

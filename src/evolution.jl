@@ -132,6 +132,7 @@ function WaveProblem(fs::FieldSet{T,D}, schedule::GhostSchedule, case;
         "the state is vertex-centered, which `point_position` assumes, but this " *
         "field set is $(fs.centering)"))
     q >= 2 && iseven(q) || throw(ArgumentError("q must be even and at least 2, got $q"))
+    case = retype(T, case)
     all(>=(q ÷ 2 + 1), fs.G) || throw(ArgumentError(
         "order q = $q needs G ≥ q/2 + 1 = $(q ÷ 2 + 1) — the dissipation reaches " *
         "one point past the derivatives — but G = $(fs.G)"))
