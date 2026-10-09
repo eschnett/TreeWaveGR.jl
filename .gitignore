@@ -1,0 +1,7 @@
+*~
+*.swp
+.DS_Store
+*.cov
+/lcov.info
+Manifest.toml
+/output/

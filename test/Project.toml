@@ -1,0 +1,19 @@
+[deps]
+ForwardDiff = "f6369f11-7733-5829-9624-2563aa707210"
+KernelAbstractions = "63c18a36-062a-441e-b654-da1e3ab1ce7c"
+LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
+MultiFloats = "bdf0d083-296b-4888-a5b6-7498122e68a5"
+Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
+SpacetimeMetrics = "77e61b41-605e-43a6-b70f-04b7dcd1f572"
+StaticArrays = "90137ffa-7385-5640-81b9-e52037218182"
+Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
+TreeAMR = "91bc416d-811c-44c1-9bc4-b9c8bbdbbd08"
+TreeWaveGR = "24b64e38-6007-432e-a01c-abae1aa0c36c"
+
+[sources]
+SpacetimeMetrics = {rev = "main", url = "https://github.com/eschnett/SpacetimeMetrics.jl"}
+TreeWaveGR = {path = ".."}
+
+[compat]
+ForwardDiff = "1.3.3"
+MultiFloats = "3"
