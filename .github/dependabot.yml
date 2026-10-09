@@ -1,0 +1,14 @@
+# Only the actions are watched: Dependabot has no Pkg ecosystem, and the
+# Julia dependencies are a registered `[compat]` floor (TreeAMR) or GitHub
+# `main` through `[sources]` (SpacetimeMetrics, IMEXRungeKutta, TreeIOHDF5).
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    groups:
+      actions:
+        patterns: ["*"]
+    commit-message:
+      prefix: CI
