@@ -102,9 +102,10 @@ What is discretized is the expanded form, as in TreeGH:
 Kreiss–Oliger dissipation is added to both equations (see
 [Discretization](#discretization)).
 
-**Why this `Π`.** TreeExcision's `notes/questions.md` writes `Π = −n^a ∂_a u`,
-"the same as TreeGH". TreeGH's `Π` is in fact densitized and has the opposite
-sign, and the choice matters (decided with Erik, 2026-10-09):
+**Why this `Π`** (decided with Erik, 2026-10-09). TreeExcision's
+`notes/questions.md` asks for TreeGH's `Π`, and that is the densitized
+`+√γ n^a ∂_a u` — not the undensitized `−n^a ∂_a u` that an earlier version
+of the note wrote. The choice matters:
 
 - The densitized form needs no extrinsic curvature and no Christoffel
   symbols. It needs only first derivatives of the metric.
@@ -252,8 +253,13 @@ The scheme follows TreeGH's "Discretization".
   stencils. The outer sum runs along `i` and the inner along `j`. It reads
   the edge and corner ghosts that TreeAMR fills unconditionally.
 - **Kreiss–Oliger dissipation** of rank `r = q/2 + 1` is applied to both
-  variables along every axis, scaled by `ε/h`. It damps Nyquist at exactly
-  `ε/h`, and it is a case parameter.
+  variables along every axis,
+
+      Q_d u = ε (−1)^{r+1} (h_d^{2r−1} / 2^{2r}) (D_+ D_−)^r u,
+
+  so that its weights carry the sign, the `2^{−2r}` and the undivided
+  difference, and the caller applies `ε/h_d` once. It damps Nyquist at
+  exactly `ε/h_d`, and `ε ≥ 0` is a case parameter.
   - Wherever `g^{dd} < 0`, a second-order-in-space scheme needs it
     (Calabrese 2004).
   - Across a coarse-fine face with a superluminal shift it is needed here too
@@ -293,10 +299,11 @@ contract:
 
 `wave_rhs_point` is the pointwise operator. It sums in a fixed order:
 
-1. Per axis: advection, the divergence terms, and the diagonal second
-   derivatives.
-2. The mixed derivatives `i < j`, row by row.
-3. The dissipation.
+1. The point's own terms, `(α/√γ)Π` and `(∂_iβ^i)Π`.
+2. Per axis: advection, `(∂_iA^{ij})∂_j u`, and the diagonal second
+   derivative.
+3. The mixed derivatives `i < j`, row by row.
+4. The dissipation.
 
 The order is part of the operator.
 
@@ -462,7 +469,11 @@ is TreeGH's and TreeHydro's chunk loop:
 - **Threads.** There are no loops of this package's own. TreeAMR's kernels
   thread themselves, and IMEXRungeKutta combines stages by owner. The
   thread-independence test runs `test/thread_workload.jl` in a subprocess at
-  another thread count and requires identical digests.
+  another thread count and requires identical digests. That bit-identity is
+  the same compiled code at another thread count, and nothing more: two
+  spellings of one sum — a stencil summed in another order, the same
+  coefficients evaluated in another kernel — differ in the last place, and
+  no test asks them not to.
 - **Devices.** Every per-point pass is a KernelAbstractions kernel on the
   field set's backend:
   - the right-hand side;
@@ -491,8 +502,8 @@ All on an Apple M3 Pro, `Float64`.
   background kind, including the superluminal ones and the boosted hole. On
   the frozen two-level hierarchy it holds at `D = 1, 2, 3`
   (`test/evolution_tests.jl`).
-- **Runs converge at order `q`** on periodic domains: Minkowski at `D = 1, 2,
-  3` and the gauge wave at `D = 2`.
+- **Runs converge at order `q`** on periodic domains: Minkowski at `D = 1`
+  and `3`, the gauge wave at `D = 2`.
 - **TreeExcision's ladder, on the box `[3, 5]×[−1, 1]²`** outside the
   horizon. The right-hand side at the exact state converges at `q` on every
   rung (`q = 2`: 2.1–2.3; `q = 4`: 4.4–4.7; `N = 8, 12, 16`). Runs to

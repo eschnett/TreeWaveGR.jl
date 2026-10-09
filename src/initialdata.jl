@@ -27,10 +27,15 @@ function WaveCase(background::Background{D}, solution::ExactSolution;
                   extents, periodic=ntuple(_ -> false, D),
                   reflecting=ntuple(_ -> (false, false), D), rotating=nothing,
                   ε=0) where {D}
+    ε >= 0 || throw(ArgumentError(
+        "the Kreiss–Oliger strength must not be negative, got ε = $ε: the sign of the " *
+        "operator is in its weights, and a negative ε turns the damping into an " *
+        "amplifier of exactly the grid-scale noise it is there to remove"))
     check_solution(solution, background)
-    check_slice(background, extents)
     T = float(promote_type(map(e -> promote_type(typeof.(e)...), extents)..., typeof(ε)))
     ext = ntuple(d -> (T(extents[d][1]), T(extents[d][2])), D)
+    check_slice(background, ext)
+    check_wave_equation(solution, background, ext)
     rot = rotating === nothing ? (0, 0) : (Int(rotating[1]), Int(rotating[2]))
     return WaveCase{D,typeof(background),typeof(solution),T}(
         background, solution, ext, Tuple(periodic), Tuple(reflecting), rot, T(ε))
@@ -43,22 +48,62 @@ Base.ndims(::WaveCase{D}) where {D} = D
 
 Throw an `ArgumentError` if, at the center of the domain, the background's
 metric couples the `D` evolved dimensions to the ones the slice drops — a
-`g_{tk}` or `g_{ik}` with `k > D` that is not zero. The leading block of such
-a metric is still a metric, but it is not the spacetime an exact solution of
-the full one solves the wave equation on (a constant shift with a component
-along a dropped axis is the simplest case). Host-side, once per case; a
-necessary condition, not a sufficient one, since it does not see a
-dependence on the dropped coordinates.
+`g_{tk}` or `g_{ik}` with `k > D` that is not zero, to rounding relative to
+the metric's size. The leading block of such a metric is still a metric, but
+it is not the spacetime an exact solution of the full one solves the wave
+equation on (a constant shift with a component along a dropped axis is the
+simplest case). Host-side, once per case.
+
+A necessary condition, not a sufficient one: it does not see a dependence on
+the dropped coordinates, nor a chart map that mixes a dropped coordinate into
+the solution while leaving the metric alone (a boost along a dropped axis of
+the boost-invariant Minkowski metric). [`check_wave_equation`](@ref) is the
+check that sees those.
 """
 function check_slice(bg::Background{D}, extents) where {D}
     D == 3 && return nothing
-    x = ntuple(d -> (float(extents[d][1]) + float(extents[d][2])) / 2, D)
+    x = ntuple(d -> (extents[d][1] + extents[d][2]) / 2, D)
     g = SpacetimeMetrics.metric(bg.metric, spacetime_point(Val(D), zero(x[1]), x))
+    tol = 64 * eps(float(eltype(g))) * maximum(abs, g)
     for a in 1:(D + 1), k in (D + 2):4
-        iszero(g[a, k]) || throw(ArgumentError(
+        abs(g[a, k]) <= tol || throw(ArgumentError(
             "the background couples the evolved coordinates to a dropped one " *
             "(g[$a, $k] = $(g[a, k]) at the domain's center), so its slice at " *
             "D = $D is not a reduction of it"))
+    end
+    return nothing
+end
+
+"""
+    check_wave_equation(sol, bg::Background{D}, extents)
+
+Throw an `ArgumentError` unless the exact solution solves the wave equation
+on the background's slice, to `1e-8` relative to the size of its flux, at
+the domain's center and at four interior points around it, at `t = 0` and
+`t = 1/2` ([`wave_residual`](@ref)). Run for `D < 3` only, where a slice
+can silently not be a reduction of the full spacetime (`CODE.md`,
+"Backgrounds"); at `D = 3` every pairing the package defines is exact by
+construction, and [`check_solution`](@ref) checks its parameters.
+
+Host-side, in `Float64`, once per case. A case in a software float type
+(MultiFloats has no transcendental functions, and no conversion to
+`Float64`) is not probed: it is retyped from one that was.
+"""
+function check_wave_equation(sol::ExactSolution, bg::Background{D}, extents) where {D}
+    D == 3 && return nothing
+    eltype(eltype(extents)) <: Base.IEEEFloat || return nothing
+    sol64, bg64 = retype(Float64, sol), retype(Float64, bg)
+    lo = ntuple(d -> Float64(extents[d][1]), D)
+    hi = ntuple(d -> Float64(extents[d][2]), D)
+    for f in (1 // 2, 3 // 8, 5 // 8), g in (1 // 2, 3 // 8, 5 // 8), t in (0.0, 0.5)
+        (f == 1 // 2) == (g == 1 // 2) || continue      # the center, and four around it
+        x = SVector{D}(ntuple(d -> lo[d] + (isodd(d) ? f : g) * (hi[d] - lo[d]), D))
+        r, scale = wave_residual(sol64, bg64, t, x)
+        abs(r) <= 1e-8 * max(scale, 1) || throw(ArgumentError(
+            "the solution $(nameof(typeof(sol))) does not solve the wave equation on " *
+            "this background's slice at D = $D: □u = $r at t = $t, x = $(Tuple(x)) " *
+            "(flux $scale). A chart map, wave number or shift along a dropped axis " *
+            "makes the solution of the full spacetime not one of the slice"))
     end
     return nothing
 end
@@ -104,6 +149,7 @@ _retype_case(::Type{T}, c::WaveCase) where {T} =
 # Whether every floating-point number reachable from `x`'s fields is a `T`.
 function retyped_already(x, ::Type{T}) where {T}
     x isa AbstractFloat && return x isa T
+    x isa Rational && return false
     x isa StaticArray && return !(eltype(x) <: AbstractFloat) || eltype(x) === T
     x isa Union{Integer,Symbol,Nothing} && return true
     x isa Tuple && return all(y -> retyped_already(y, T), x)
@@ -171,7 +217,11 @@ The case's exact state at time `t`, as the `AllVariables` callback
 """
 function exact_callback(case::WaveCase{D,B,S,T}, t) where {D,B,S,T}
     sol, bg = case.solution, case.background
-    return AllVariables(x -> exact_state(sol, bg, convert(eltype(x), t), x))
+    # Converted here, on the host: a `Float64` time converted inside the
+    # callback would be a `Float64` operand in a `Float32` kernel, which a
+    # device without `Float64` refuses to compile.
+    tt = convert(T, t)
+    return AllVariables(x -> exact_state(sol, bg, tt, x))
 end
 
 """

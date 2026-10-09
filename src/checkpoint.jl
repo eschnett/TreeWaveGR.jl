@@ -12,17 +12,19 @@ const APPLICATION = "TreeWaveGR"
 const FORMAT_VERSION = 1
 
 """
-    save_run(path, forest, fs, u; chunk, nsteps, nregrids, q, sync = true)
+    save_run(path, forest, fs, u; chunk, nsteps, nregrids, passes = 0, q,
+             sync = true)
 
 Write the run after chunk `chunk` to `path`: the mesh, the state `u` of
-`fs`, and the run's counters.
+`fs`, and the run's counters (`passes` is the initial-data cycle's).
 """
 function save_run(path::AbstractString, forest::Forest, fs::FieldSet, u; chunk::Integer,
-                  nsteps::Integer, nregrids::Integer, q::Integer, sync::Bool=true)
+                  nsteps::Integer, nregrids::Integer, passes::Integer=0, q::Integer,
+                  sync::Bool=true)
     save_checkpoint(path, forest; fieldsets=("state" => (fs, u),),
                     application=APPLICATION => FORMAT_VERSION,
                     data=(; chunk=Int(chunk), nsteps=Int(nsteps), nregrids=Int(nregrids),
-                          q=Int(q)), sync=sync)
+                          passes=Int(passes), q=Int(q)), sync=sync)
     return path
 end
 

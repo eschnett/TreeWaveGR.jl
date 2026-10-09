@@ -220,3 +220,41 @@ end
     @test ratios[1] > 1.5
     @test ratios[2] < 0.75
 end
+
+@testset "The convergence rate takes any floating-point type" begin
+    hs = Float32x2[1 // 4, 1 // 8, 1 // 16]
+    @test convergence_rate(hs, hs .^ 4) ≈ 4
+    @test convergence_rate(Float32[0.5, 0.25], Float32[1, 1 // 4]) ≈ 2
+end
+
+@testset "A case is checked when it is built" begin
+    # A boost along a dropped axis leaves Minkowski's metric alone (to
+    # rounding) but mixes `z` into the solution: refused by the wave-equation
+    # probe at every speed, not by accident of rounding at some.
+    for v in (0.5, 0.6, 0.8)
+        @test_throws ArgumentError WaveCase(Background{2}(boost(Minkowski(), [0, 0, v])),
+                                            PlaneWave(1.0, [1.0, 0, 0]);
+                                            extents=((0.0, 1.0), (0.0, 1.0)))
+    end
+    # A boost in the plane is a reduction, and is accepted.
+    @test WaveCase(Background{2}(boost(Minkowski(), [0.5, 0.3, 0])),
+                   PlaneWave(1.0, [1.0, 0, 0]); extents=((0.0, 1.0), (0.0, 1.0))) isa
+          WaveCase
+    @test WaveCase(Background{1}(GaugeWave(0.1, 1.0)), PlaneWave(1.0, [2π, 0, 0]);
+                   extents=((0.0, 1.0),), periodic=(true,)) isa WaveCase
+    # A wave number along a dropped axis changes only the frequency.
+    @test_throws ArgumentError WaveCase(Background{1}(Minkowski()),
+                                        PlaneWave(1.0, [2π, 1.0, 0]); extents=((0.0, 1.0),))
+    # Negative dissipation is an amplifier.
+    @test_throws ArgumentError WaveCase(Background{1}(Minkowski()),
+                                        PlaneWave(1.0, [2π, 0, 0]); extents=((0.0, 1.0),),
+                                        ε=-0.1)
+end
+
+@testset "A rational parameter is retyped" begin
+    case = WaveCase(Background{3}(KerrSchild(1 // 1, 3 // 5)), StaticHole(1.0, 0.6);
+                    extents=((3.0, 5.0), (-1.0, 1.0), (-1.0, 1.0)))
+    c32 = retype(Float32, case)
+    @test c32.background.metric isa KerrSchild{Float32}
+    @test retype(Float64, case).background.metric isa KerrSchild{Float64}
+end

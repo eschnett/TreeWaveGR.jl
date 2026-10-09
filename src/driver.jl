@@ -8,14 +8,29 @@
 # with nothing of their physics.
 
 """
+    chunk_count(t_end, chunk) -> n
+
+The number of chunks of a run to `t_end` in chunks of `chunk`: `t_end/chunk`
+rounded up — unless it is within a few ulps of an integer, which it then
+is. `0.07/0.01` is `7.000000000000001` in `Float64`, and a bare `ceil` would
+add an eighth chunk from `t_end` to `t_end`; `0.33/0.03` would add a twelfth
+a few ulps long. IMEXRungeKutta derives its step count the same way.
+"""
+function chunk_count(t_end::T, chunk::T) where {T}
+    r = t_end / chunk
+    n = floor(r + one(r) / 2)
+    return n >= 1 && abs(r - n) <= 4 * eps(r) ? _toint(n) : ceilint(r)
+end
+
+"""
     chunk_end(c, chunk, t_end) -> t
 
 The time at the end of chunk `c` of a run to `t_end` in chunks of `chunk`:
-`c · chunk`, or `t_end` for the last. Computed rather than accumulated, so
-that a restart after chunk `c` starts at the same bits.
+`c · chunk`, or `t_end` for the last ([`chunk_count`](@ref)). Computed rather
+than accumulated, so that a restart after chunk `c` starts at the same bits.
 """
 chunk_end(c::Integer, chunk::T, t_end::T) where {T} =
-    c >= ceilint(t_end / chunk) ? t_end : c * chunk
+    c >= chunk_count(t_end, chunk) ? t_end : c * chunk
 
 """
     evolve!(T, case; N, roots, q = 4, t_end, chunk = t_end, cfl = 1/4,
@@ -34,14 +49,18 @@ Run `case` from its exact state at `t = 0` to `t_end`, in chunks of
   `:auto` derives it from the distance the fastest characteristic travels in
   one chunk ([`refinement_buffer`](@ref)).
 - `observer(p, t, u, row)` is called after every chunk, with the problem,
-  the time, the state vector and the chunk's record.
+  the time, the state vector and the chunk's record. `p.fs`'s working array
+  then holds `u`, ghosts filled. `u` is the integrator's own state, stepped
+  in place by the next chunk: copy it to keep it.
 - `checkpoint` — a path prefix; a checkpoint is written after every
   `checkpoint_every` chunks and after the last, at
   [`checkpoint_path`](@ref)`(checkpoint, c)`, after the regrid.
 - `restart` — the path of such a checkpoint: the run continues from it, as
   if it had not stopped. The case and the keywords must be the run's own.
 
-Returns `(; records, forest, fs, u, t, nsteps, nregrids, passes)`.
+Returns `(; records, forest, fs, u, t, nsteps, nregrids, passes)`; `fs`'s
+working array holds the final `u`, ghosts filled. A `refinement` in another
+floating-point type is converted to `T`.
 `records` holds one `NamedTuple` of `Float64`s and counts per chunk:
 `chunk`, `t`, `nsteps`, `nblocks`, `maxlevel`, `l2`/`linf` (the state's
 error against the exact solution) and `norm` (the state's `L2` norm).
@@ -52,9 +71,11 @@ function evolve!(::Type{T}, case::WaveCase{D}; N::Integer, roots, q::Integer=4, 
                  observer=nothing, checkpoint=nothing, checkpoint_every::Integer=1,
                  restart=nothing, types=()) where {T,D}
     case = retype(T, case)
+    refinement = refinement === nothing ? nothing : retype(T, refinement)
     t_end, chunk = convert(T, t_end), convert(T, chunk)
+    t_end > 0 || throw(ArgumentError("t_end must be positive, got $t_end"))
     chunk > 0 || throw(ArgumentError("chunk must be positive, got $chunk"))
-    nchunks = ceilint(t_end / chunk)
+    nchunks = chunk_count(t_end, chunk)
     ops = wave_operators(q)
 
     nsteps_total, nregrids, passes = 0, 0, 0
@@ -68,10 +89,12 @@ function evolve!(::Type{T}, case::WaveCase{D}; N::Integer, roots, q::Integer=4, 
         else
             buf = regrid_buffer(T, buffer, case, refinement, chunk; N=N, roots=roots, q=q,
                                 coefficients=coefficients)
-            schedule, passes, _ = adapt_to_initial_data!(
+            schedule, passes, converged = adapt_to_initial_data!(
                 fs, ops; initial=exact_callback(case, zero(T)),
                 flags=f -> wave_flags(f, refinement, zero(T)), buffer=buf,
-                maxpasses=maxpasses, boundary=dirichlet(case, forest, zero(T)))
+                maxpasses=maxpasses, boundary=_dirichlet(case, forest, zero(T)))
+            converged || @warn "The initial mesh was still changing after " *
+                               "$maxpasses passes; the run starts on the last one."
         end
         u = statevector(fs)
         gather!(u, fs)
@@ -87,6 +110,7 @@ function evolve!(::Type{T}, case::WaveCase{D}; N::Integer, roots, q::Integer=4, 
         schedule = GhostSchedule(fs, ops)
         c0 = run.data.chunk
         nsteps_total, nregrids = run.data.nsteps, run.data.nregrids
+        passes = run.data.passes
     end
     buf = refinement === nothing ? 0 :
           regrid_buffer(T, buffer, case, refinement, chunk; N=N, roots=roots, q=q,
@@ -102,6 +126,8 @@ function evolve!(::Type{T}, case::WaveCase{D}; N::Integer, roots, q::Integer=4, 
             p = WaveProblem(fs, schedule, case; q=q, coefficients=coefficients)
             integ = nothing
         end
+        stop > t || throw(ErrorException(
+            "chunk $c ends at $stop, not after its start $t: the chunk ends must increase"))
         nsteps = wave_steps(p, t, stop; cfl=cfl)
         # The previous chunk's scratch, while the mesh is the one it was
         # allocated for (`integ` is reset with `p` after a regrid).
@@ -115,9 +141,7 @@ function evolve!(::Type{T}, case::WaveCase{D}; N::Integer, roots, q::Integer=4, 
         observer === nothing || observer(p, t, u, row)
 
         if refinement !== nothing && c < nchunks
-            boundary = dirichlet(case, forest, t)
-            scatter!(fs, u)
-            fill_ghosts!(fs, schedule; boundary=boundary)
+            boundary = _dirichlet(case, forest, t)
             flags = wave_flags(fs, refinement, t)
             if regrid!(forest, fs => schedule; flags=flags, buffer=buf, boundary=boundary)
                 schedule = GhostSchedule(fs, ops)
@@ -129,7 +153,7 @@ function evolve!(::Type{T}, case::WaveCase{D}; N::Integer, roots, q::Integer=4, 
         end
         if checkpoint !== nothing && (c % checkpoint_every == 0 || c == nchunks)
             save_run(checkpoint_path(checkpoint, c), forest, fs, u; chunk=c,
-                     nsteps=nsteps_total, nregrids=nregrids, q=q)
+                     nsteps=nsteps_total, nregrids=nregrids, passes=passes, q=q)
         end
     end
     return (; records, forest, fs, u, t, nsteps=nsteps_total, nregrids, passes)
@@ -151,11 +175,15 @@ function regrid_buffer(::Type{T}, buffer, case, refinement, chunk; N, roots, q,
 end
 
 # One chunk's record: the state's error against the exact solution and its
-# norm, as `Float64`s, and the mesh's size. Overwrites the working array,
-# which the next right-hand side or regrid refreshes from `u`.
+# norm, as `Float64`s, and the mesh's size. The exact state is formed in the
+# working array, which is then refilled from `u`, ghosts and all: the
+# observer, the regrid's criterion and the caller of `evolve!` read the
+# working array, and must find the evolved state there, not the exact one.
 function chunk_record(p::WaveProblem{T}, u, t, c, nsteps) where {T}
     fs = p.fs
     err = u .- exact_statevector(fs, p.case, t)
+    scatter!(fs, u)
+    fill_ghosts!(fs, p.schedule; boundary=_dirichlet(p.case, fs.forest, t))
     return (; chunk=c, t=tofloat64(t), nsteps, nblocks=nblocks(fs),
             maxlevel=maxlevel(fs.forest), l2=tofloat64(volume_weighted_norm(fs, err)),
             linf=tofloat64(volume_weighted_norm(fs, err; p=Inf)),

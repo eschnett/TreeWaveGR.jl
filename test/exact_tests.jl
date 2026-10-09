@@ -11,18 +11,6 @@
     end
 end
 
-# `∂_μ(√−g g^{μν} ∂_ν u)` at the spacetime point `z = (t, x_1, …, x_D)`, by
-# nested forward-mode differentiation, independent of this package's
-# coefficients and of `exact_state`.
-function box_flux_divergence(sol, bg::Background{D}, z::SVector) where {D}
-    u(y) = exact_value(sol, bg, y[1], SVector{D}(ntuple(i -> y[i + 1], D)))
-    function F(y)
-        g = spacetime_metric(bg, y[1], SVector{D}(ntuple(i -> y[i + 1], D)))
-        return sqrt(-det(g)) * (inv(g) * ForwardDiff.gradient(u, y))
-    end
-    return tr(ForwardDiff.jacobian(F, z)), maximum(abs, F(z))
-end
-
 # Each exact solution on backgrounds that share its base chart, in the
 # dimensions it is a solution in, at points outside every hole.
 const SOLUTION_CASES = [
@@ -62,7 +50,7 @@ const SOLUTION_CASES = [
         # Move the point outward in the first coordinates, away from every
         # hole (the river's horizon at D = 1 is a point at |x| = 2).
         z = SVector(t, ntuple(i -> x[i] + sign(x[i]) * 1.5, D)...)
-        div, scale = box_flux_divergence(sol, bg, z)
+        div, scale = TreeWaveGR.wave_residual(sol, bg, z[1], z[SVector{D}(2:(D + 1))])
         @test abs(div) <= 1e-12 * max(1, scale)
     end
 end

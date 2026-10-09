@@ -26,7 +26,7 @@ Three rules:
 
 ## Commands
 
-Run the tests (about 1.5 minutes, nearly all compilation):
+Run the tests (about 2.5 minutes, nearly all compilation):
 
 ```bash
 julia --project=. -e 'using Pkg; Pkg.test()'
@@ -73,8 +73,11 @@ Metal has no `Float64`, so the device tests run in `Float32` there.
   the leading block of the 4-metric at zero dropped coordinates. An exact
   solution of the full metric is a solution on the slice only if nothing
   couples to a dropped axis: no shift, wave number or boost component along
-  one. `WaveCase` checks the metric (`check_slice`); a `PlaneWave` with a
-  wave number along a dropped axis it cannot see — that changes `ω` only.
+  one. `WaveCase` checks the metric (`check_slice`, to rounding) and, at
+  `D < 3`, evaluates `□u` of the solution at a few points of the domain
+  (`check_wave_equation`), which catches what the metric cannot show: a
+  wave number along a dropped axis, or a boost of boost-invariant Minkowski
+  along one.
 - **Dirichlet on every ghost over-specifies the outgoing modes.** The RHS at
   the exact state converges at `q`; a long run converges at `q − 1`. Keep
   convergence runs short or periodic (`CODE.md`, "Boundaries").

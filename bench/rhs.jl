@@ -3,8 +3,9 @@
 #     julia --project=. -t 8 bench/rhs.jl [--type=f64|f32] [--N=16] [--roots=4]
 #     julia --project=<env with Metal> bench/rhs.jl --backend=metal --type=f32
 #
-# On the static hole of `test/hole_tests.jl`'s box, at q = 4 with dissipation,
-# for both coefficient sources: the whole `wave_rhs!` (scatter, ghost fill,
+# On the static and the boosted hole (a = 0.6), on the box [3, 7]×[−2, 2]²
+# outside the horizon, at q = 4 with dissipation, for every coefficient
+# source the background allows: the whole `wave_rhs!` (scatter, ghost fill,
 # kernel) and the kernel alone (`launch_rhs!`). Best of `reps`.
 
 using SpacetimeMetrics

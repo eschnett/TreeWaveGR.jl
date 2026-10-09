@@ -117,3 +117,65 @@ end
                                            restart=checkpoint_path(prefix, 2))
     end
 end
+
+@testset "The chunk count is not fooled by rounding" begin
+    # `0.07/0.01` is `7.000000000000001`, and `0.33/0.03` is a few ulps above
+    # 11: a bare `ceil` gave an empty eighth chunk, and a twelfth a few ulps
+    # long.
+    @test TreeWaveGR.chunk_count(0.07, 0.01) == 7
+    @test TreeWaveGR.chunk_count(0.33, 0.03) == 11
+    @test TreeWaveGR.chunk_count(0.5, 0.2) == 3
+    @test TreeWaveGR.chunk_count(1.0, 1.0) == 1
+    @test TreeWaveGR.chunk_count(0.25, 1.0) == 1
+    for T in (Float32, Float64), a in 1:100, b in 1:48
+        t_end, chunk = T(b * a // 100), T(a // 100)
+        n = TreeWaveGR.chunk_count(t_end, chunk)
+        ends = [TreeWaveGR.chunk_end(c, chunk, t_end) for c in 1:n]
+        @test issorted(ends) && allunique(ends)
+        @test ends[end] == t_end
+        @test n == b
+    end
+    case = WaveCase(Background{1}(Minkowski()), PlaneWave(1.0, [2π, 0, 0]);
+                    extents=((0.0, 1.0),), periodic=(true,))
+    r = evolve!(Float64, case; N=16, roots=1, t_end=0.07, chunk=0.01)
+    @test length(r.records) == 7
+    @test r.t == 0.07
+    @test_throws ArgumentError evolve!(Float64, case; N=16, roots=1, t_end=0)
+end
+
+@testset "The observer and the caller see the evolved state" begin
+    seen = Ref(0.0)
+    r = evolve!(Float64, PULSE_CASE; N=8, roots=4, t_end=1 // 16, chunk=1 // 32,
+                refinement=PULSE_CRITERION,
+                observer=(p, t, u, row) -> begin
+                    v = similar(u)
+                    gather!(v, p.fs)
+                    seen[] = max(seen[], maximum(abs, v .- u))
+                end)
+    @test seen[] == 0
+    v = similar(r.u)
+    gather!(v, r.fs)
+    @test v == r.u
+end
+
+@testset "A criterion in another type drives the run" begin
+    crit32 = Refinement(Float32, Val(2); refine_tol=0.05, coarsen_tol=0.01, maxlevel_cap=2)
+    r = evolve!(Float64, PULSE_CASE; N=8, roots=4, t_end=1 // 32, chunk=1 // 32,
+                refinement=crit32)
+    @test r.records[end].maxlevel == 2
+    r32 = evolve!(Float32, PULSE_CASE; N=8, roots=4, t_end=1 // 32, chunk=1 // 32,
+                  refinement=PULSE_CRITERION)
+    @test eltype(r32.u) === Float32
+    @test r32.forest.leaves == r.forest.leaves
+end
+
+@testset "A restart keeps the adaptation's pass count" begin
+    mktempdir() do dir
+        prefix = joinpath(dir, "pulse")
+        kw = (; N=8, roots=4, t_end=1 // 16, chunk=1 // 32, refinement=PULSE_CRITERION)
+        full = evolve!(Float64, PULSE_CASE; kw..., checkpoint=prefix)
+        rest = evolve!(Float64, PULSE_CASE; kw..., restart=checkpoint_path(prefix, 1))
+        @test full.passes >= 2
+        @test rest.passes == full.passes
+    end
+end

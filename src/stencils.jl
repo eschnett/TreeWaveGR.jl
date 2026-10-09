@@ -303,7 +303,7 @@ one it is depends on the weights: `/h^m` for
 
 Summation runs from the lowest offset to the highest, which is a choice and
 not a law — a different order differs in the last place, and `CODE.md`'s
-"Measured results" records what that does and does not mean for the
+"Precision, threads, devices" says what that does and does not mean for the
 bit-identity the threading test asserts.
 """
 @inline function apply_stencil(w::SVector{n}, u::AbstractVector,

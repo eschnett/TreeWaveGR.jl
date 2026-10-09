@@ -63,12 +63,17 @@ The Dirichlet hook at time `t`: every outer ghost point set to the case's
 exact state there, through [`exact_state`](@ref). `nothing` when the
 forest has no outer face. Rebuilt at every right-hand-side evaluation with
 that evaluation's `t`; it captures only `isbits` values, so it is a kernel
-argument on any backend.
+argument on any backend. The case is retyped to the forest's type first.
 
 It goes to three places, as in TreeGeneralizedHarmonic: the ghost fill of
 every right-hand side, `regrid!`, and `adapt_to_initial_data!`.
 """
-function dirichlet(case, forest::Forest{D,T}, t) where {D,T}
+dirichlet(case, forest::Forest{D,T}, t) where {D,T} =
+    _dirichlet(retype(T, case), forest, t)
+
+# The hook for a case already in the forest's type — what `WaveProblem` and
+# `evolve!` hold — without `retype`'s reflection at every right-hand side.
+function _dirichlet(case, forest::Forest{D,T}, t) where {D,T}
     has_outer_face(forest) || return nothing
     sol, bg = case.solution, case.background
     tt = convert(T, t)

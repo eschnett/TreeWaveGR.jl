@@ -91,6 +91,12 @@ function Refinement(::Type{T}, ::Val{D}; refine_tol, coarsen_tol, maxlevel_cap::
                            T(floor_radius), ntuple(d -> T(floor_velocity[d]), D))
 end
 
+retype(::Type{T}, c::Refinement{T}) where {T} = c
+retype(::Type{T}, c::Refinement{S,D}) where {T,S,D} =
+    Refinement{T,D}(convert(T, c.refine_tol), convert(T, c.coarsen_tol), c.maxlevel_cap,
+                    convert(T, c.ε), c.floor_level, retype(T, c.floor_center),
+                    convert(T, c.floor_radius), retype(T, c.floor_velocity))
+
 """
     floor_level(crit::Refinement, forest, key, t) -> Int
 
