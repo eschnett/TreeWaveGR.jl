@@ -212,6 +212,7 @@ The solutions, each defined in a base chart:
 | solution | chart | `u` | dimensions |
 |---|---|---|---|
 | `PlaneWave(A, k, φ)` | Minkowski | `A sin(k·x̂ − |k| t̂ + φ)` | any |
+| `PlanePulse(A, n, w, s)` | Minkowski | `A exp(−((n·x̂ − t̂ − s)/w)²)` | any |
 | `PolynomialWave(A, L)` | Minkowski | `A(t̂x̂ + (t̂² + x̂²)/2)/L²` | any |
 | `StaticHole(M, a)` | Kerr–Schild | `ln((r − r₊)/(r − r₋))` | 3 |
 | `StaticRiver(M)` | river | the radial monopole (see its docstring) | any |
@@ -389,7 +390,64 @@ hot path:
 
 ## Refinement and the driver
 
-*(W4 — not yet built.)*
+**The indicator** (`src/refinement.jl`) is Löhner's, on `u`, with the
+noise floor referred to the global amplitude `max |u|`:
+
+    τ = |u₊ − 2u₀ + u₋| / (|u₊ − u₀| + |u₀ − u₋| + 4ε·max|u|)
+
+It takes the maximum over the dimensions.
+
+- **Why a global floor.** It is TreeWave's lesson. `u` crosses zero, and a
+  floor that scales with the local values refines numerical dust.
+- **How the flags are formed.** TreeAMR's `firing_boxes` evaluates `τ` per
+  point on the field set's backend, twice, and turns it into one flag per
+  block. The flag is:
+  - `(Refine, box)` above `refine_tol` below the cap;
+  - `(Keep, box)` above `coarsen_tol`;
+  - `Coarsen` otherwise.
+
+  The gap between the two tolerances is the dead band. They have no defaults.
+- **A level floor.** A ball, possibly moving at a constant velocity, holds
+  every block that reaches into it at a given level whatever `τ` says. A
+  hole case wants resolution at the horizon before anything there is a
+  feature, and TreeExcision's surface needs it.
+- **The regrid's margin** is `refinement_buffer`: the distance the fastest
+  characteristic travels in one chunk, in cells at the cap, plus one. It is
+  measured on the unrefined forest at `t = 0`, so a restart derives the same
+  margin. It may not exceed `N`, since TreeAMR's recruitment reaches one ring
+  of neighbours.
+
+**The driver.** `evolve!(T, case; N, roots, q, t_end, chunk, refinement, …)`
+is TreeGH's and TreeHydro's chunk loop:
+
+- **The initial mesh** is adapted to the exact initial data by
+  `adapt_to_initial_data!`, which re-evaluates the data on every new mesh.
+- **Each chunk:**
+  1. A fixed number of RK4 steps on one mesh, sized by the speed at the
+     chunk's start. The integrator's scratch is reused while the mesh
+     stands.
+  2. A record: the state's L2/L∞ error against the exact solution, its norm,
+     the step and block counts and the finest level, all as `Float64`.
+  3. The observer.
+  4. A regrid. This means `scatter!`, a ghost fill with the Dirichlet hook,
+     the flags, and `regrid!` with the hook. After a move, the schedule, the
+     state vector and the problem (with its sampled coefficients) are
+     rebuilt.
+  5. A checkpoint.
+- **Chunk end times** are `c · chunk`, or `t_end` for the last, computed and
+  never accumulated.
+
+**Checkpoints** (`src/checkpoint.jl`) go through TreeIOHDF5's
+`save_checkpoint`/`load_checkpoint`.
+
+- **What is stored.** The mesh, the state vector, the chunk index, and the
+  step and regrid counts.
+- **When.** After the regrid, where a fixed-step integrator holds nothing
+  but `(t, u)`. `t` is a function of the chunk index.
+- **Restart.** `restart = path` is the same `evolve!` call continued, and the
+  order and the block size are checked against the file. It is bit for bit:
+  the restarted run's leaves, state, step count and records are those of the
+  run that did not stop (`test/driver_tests.jl`).
 
 ## Precision, threads, devices
 
@@ -450,6 +508,11 @@ All on an Apple M3 Pro, `Float64`.
     faces costs more.
 - **The river at `D = 2`** (`[3, 5]×[−1, 1]`, `t = 1/2`, `N = 16, 32, 64`)
   converges at 4.0.
+- **Tracking a pulse.** A Gaussian plane pulse crosses the unit square
+  diagonally at `D = 2`, on 4² roots of `N = 8`, two levels deep, to `t = 1/4`
+  in chunks of `1/32`. The adaptive run's L2 error is the uniform run's at
+  its finest resolution (2.354e-4 against 2.354e-4) on at most 187 blocks of
+  the 256 that resolution needs everywhere.
 - **Symmetric domains.** A reflecting face at `z = 0`, and the rotating
   quadrant above the hole, each reproduce the full box to `1e-11` relative
   after four steps with dissipation. The full box is itself symmetric only
@@ -481,7 +544,7 @@ All on an Apple M3 Pro, `Float64`.
 | W1 | backgrounds, coefficients, exact solutions | done |
 | W2 | right-hand side, integrator, flat and curved convergence, threads, types | done |
 | W3 | hole cases (a = 0, 0.6, 0.9; v = 0.3, 0.6; a = 0.6 with v = 0.6), river, reflecting and rotating domains | done |
-| W4 | refinement criterion, driver, checkpoint and restart (TreeIOHDF5) | |
+| W4 | refinement criterion, driver, checkpoint and restart (TreeIOHDF5) | done |
 | W5 | device tests, benchmark | |
 
 ## Possible extensions

@@ -18,6 +18,7 @@ using LinearAlgebra
 using SpacetimeMetrics
 using StaticArrays
 using TreeAMR
+using TreeIOHDF5
 
 import IMEXRungeKutta as IRK
 
@@ -32,6 +33,9 @@ include("coefficients.jl")
 include("evolution.jl")
 include("stepping.jl")
 include("initialdata.jl")
+include("refinement.jl")
+include("checkpoint.jl")
+include("driver.jl")
 
 # Stencils and the provider seam
 export derivative_weights, dissipation_weights, dissipation_rank
@@ -44,7 +48,7 @@ export coefficient_fieldset, fill_coefficients!
 
 # Exact solutions
 export inner_coordinates, base_chart, ExactSolution
-export PlaneWave, PolynomialWave, StaticHole, StaticRiver
+export PlaneWave, PlanePulse, PolynomialWave, StaticHole, StaticRiver
 export exact_value, exact_state
 
 # Boundaries
@@ -58,5 +62,9 @@ export state_partition, wave_integrator, wave_solve, wave_steps
 # Cases
 export WaveCase, with_dissipation, wave_forest, state_fieldset, wave_operators
 export exact_callback, fill_exact!, exact_statevector, wave_errors
+
+# Refinement, the driver, checkpoints
+export lohner, Refinement, wave_flags, refinement_buffer
+export evolve!, save_run, load_run, checkpoint_path
 
 end # module TreeWaveGR

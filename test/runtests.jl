@@ -20,6 +20,7 @@ using TreeWaveGR
     include("exact_tests.jl")
     include("evolution_tests.jl")
     include("hole_tests.jl")
+    include("driver_tests.jl")
     include("type_tests.jl")
     include("threading_tests.jl")
 end

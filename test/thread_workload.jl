@@ -19,6 +19,7 @@ using TreeAMR
 using TreeWaveGR
 
 digest(u::Vector{<:Real}) = string(hash(u); base=16, pad=16)
+digest(s::AbstractString) = string(hash(s); base=16, pad=16)
 
 function thread_digests()
     lines = String[]
@@ -47,6 +48,17 @@ function thread_digests()
     push!(lines, "hole nsteps $n state $(digest(u))")
     push!(lines, "hole l2 $(repr(volume_weighted_norm(fs, u))) " *
                  "speed $(repr(max_speed(p, 1 // 8)))")
+    # The driver with its regrids: the initial-data cycle, `firing_boxes` and
+    # the indicator's global scale, regrids that move data, and the records'
+    # norms.
+    case = WaveCase(Background{2}(Minkowski()), PlanePulse(1.0, [1.0, 0.5, 0], 0.08, 0.3);
+                    extents=((0.0, 1.0), (0.0, 1.0)), ε=0.25)
+    crit = Refinement(Float64, Val(2); refine_tol=0.05, coarsen_tol=0.01, maxlevel_cap=2)
+    r = evolve!(Float64, case; N=8, roots=4, t_end=1 // 16, chunk=1 // 32,
+                refinement=crit)
+    push!(lines, "pulse passes $(r.passes) regrids $(r.nregrids) nsteps $(r.nsteps) " *
+                 "blocks $(length(r.forest.leaves)) leaves $(digest(repr(r.forest.leaves)))")
+    push!(lines, "pulse state $(digest(r.u)) records $(digest(repr(r.records)))")
     return lines
 end
 

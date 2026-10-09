@@ -132,6 +132,36 @@ solution_chart(::PlaneWave) = Minkowski
 end
 
 """
+    PlanePulse(amplitude, n, width, offset = 0)
+
+`u = A exp(−((n·x̂ − t̂ − s)/w)²)` on Minkowski, `n` a unit 3-vector: a
+Gaussian pulse travelling along `n` at the speed of light, centered on the
+plane `n·x̂ = s` at `t̂ = 0`. A localized feature that moves, for the
+regrid tests. As for [`PlaneWave`](@ref), at `D < 3` the components of `n`
+along dropped axes should be zero.
+"""
+struct PlanePulse{T} <: ExactSolution
+    amplitude::T
+    n::SVector{3,T}
+    width::T
+    offset::T
+end
+function PlanePulse(A, n::AbstractVector, w, s=0)
+    T = float(promote_type(typeof(A), eltype(n), typeof(w), typeof(s)))
+    nn = SVector{3,T}(n)
+    nn = nn / sqrt(dot(nn, nn))
+    return PlanePulse{T}(T(A), nn, T(w), T(s))
+end
+solution_chart(::PlanePulse) = Minkowski
+
+@inline function solution_value(s::PlanePulse, x̂::SVector{4}, ::Val{D}) where {D}
+    U = eltype(x̂)
+    n = SVector{3,U}(s.n)
+    ξ = (n[1] * x̂[2] + n[2] * x̂[3] + n[3] * x̂[4] - x̂[1] - U(s.offset)) / U(s.width)
+    return U(s.amplitude) * exp(-ξ * ξ)
+end
+
+"""
     PolynomialWave(amplitude, scale)
 
 `u = A (t̂ x̂ + (t̂² + x̂²)/2) / L²` on Minkowski, with `L` the `scale`: a
