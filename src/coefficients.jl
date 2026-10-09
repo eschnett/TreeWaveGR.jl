@@ -14,8 +14,10 @@
 # The kernel argument is the coefficient set's working array for the first
 # and `nothing` for the second. Both evaluate `wave_coefficients` at the same
 # position, formed by the same expression TreeAMR's `coordinates` uses, so on
-# a background that does not depend on `t` the two give bit-identical
-# right-hand sides (`test/evolution_tests.jl`).
+# a background that does not depend on `t` the two give the same right-hand
+# side — to rounding, not bit for bit: the set is filled by another kernel,
+# and ForwardDiff's `muladd`s may fuse differently in the two compilations
+# (`test/evolution_tests.jl`).
 
 """
     coefficient_fieldset(forest; backend = CPU()) -> FieldSet
@@ -41,6 +43,7 @@ Sample `bg`'s coefficients at time `t` into the coefficient field set `cfs`,
 at every owned point, through `fill_by_coordinates!`.
 """
 function fill_coefficients!(cfs::FieldSet{T,D}, bg::Background{D}, t) where {T,D}
+    bg = retype(T, bg)
     tt = convert(T, t)
     fill_by_coordinates!(AllVariables(x -> pack_coefficients(wave_coefficients(bg, tt, x))),
                          cfs)

@@ -172,7 +172,7 @@ array and fill the ghosts, with the Dirichlet hook at time `t`. Split from
 """
 function prepare_rhs!(p::WaveProblem{T}, u, t) where {T}
     scatter!(p.fs, u)
-    fill_ghosts!(p.fs, p.schedule; boundary=dirichlet(p.case, p.fs.forest, t))
+    fill_ghosts!(p.fs, p.schedule; boundary=_dirichlet(p.case, p.fs.forest, t))
     return nothing
 end
 
@@ -240,8 +240,8 @@ end
 The least-squares slope of `log(err)` against `log(h)`.
 """
 function convergence_rate(hs, errs)
-    x = log.(Float64.(hs))
-    y = log.(Float64.(errs))
+    x = log.(tofloat64.(hs))
+    y = log.(tofloat64.(errs))
     xm, ym = sum(x) / length(x), sum(y) / length(y)
     return sum((x .- xm) .* (y .- ym)) / sum((x .- xm) .^ 2)
 end

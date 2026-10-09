@@ -5,8 +5,10 @@
 # (the coefficients need only `sqrt`) and the polynomial wave. Its error
 # against the exact solution is not rounding — RK4's stage order is one, and
 # the Dirichlet data depend on time — but it is the same run at every
-# precision, so each type must reproduce the `Float64` state to its own
-# precision, and `Float32x2` must do better than `Float64` could tell.
+# precision, so each type must reproduce a `BigFloat` run of it to its own
+# precision. (The reference is rounded to `Float64` for the comparison, so
+# `Float32x2` is held to `1000 eps(Float32x2)`, about `1e-11`: far better than
+# `Float32` could do, and not quite at `Float32x2`'s own limit.)
 
 function polynomial_run(T)
     case = WaveCase(Background{2}(ConstantShift([0.5, 0.25, 0.0])),

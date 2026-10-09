@@ -157,7 +157,11 @@ solution_chart(::PlanePulse) = Minkowski
 @inline function solution_value(s::PlanePulse, x̂::SVector{4}, ::Val{D}) where {D}
     U = eltype(x̂)
     n = SVector{3,U}(s.n)
-    ξ = (n[1] * x̂[2] + n[2] * x̂[3] + n[3] * x̂[4] - x̂[1] - U(s.offset)) / U(s.width)
+    # Normalized here as well as in the constructor: retyped to another
+    # precision, the stored `n` is a unit vector only to that precision, and
+    # the pulse must still travel at exactly the speed of light.
+    nn = sqrt(dot(n, n))
+    ξ = ((n[1] * x̂[2] + n[2] * x̂[3] + n[3] * x̂[4]) / nn - x̂[1] - U(s.offset)) / U(s.width)
     return U(s.amplitude) * exp(-ξ * ξ)
 end
 
@@ -166,9 +170,10 @@ end
 
 `u = A (t̂ x̂ + (t̂² + x̂²)/2) / L²` on Minkowski, with `L` the `scale`: a
 quadratic solution in every dimension (`□u = −1 + 1`). Every stencil here is
-exact on it, so a run's error is rounding alone — and it needs no
-transcendental function, so it is the solution of the software-float type
-tests, where MultiFloats has no `sin`.
+exact on it, so the right-hand side at the exact state is exact to rounding.
+A run's error is not: RK4's stage order is one, and the Dirichlet data
+depend on time. It needs no transcendental function, so it is the solution
+of the software-float type tests, where MultiFloats has no `sin`.
 """
 struct PolynomialWave{T} <: ExactSolution
     amplitude::T
@@ -285,13 +290,16 @@ function check_solution(sol::ExactSolution, bg::Background{D}) where {D}
     sol isa StaticHole && D != 3 && throw(ArgumentError(
         "the Kerr monopole is a solution in three dimensions; at D = $D the slice " *
         "of Kerr–Schild is a model spacetime, not Kerr"))
+    # To rounding: a background written in rationals and a solution in
+    # floats, or either retyped, name the same hole.
+    same(a, b) = isapprox(a, b; rtol=8 * eps(float(typeof(a))), atol=0)
     if sol isa StaticHole && chart isa KerrSchild
-        (sol.mass == chart.mass && sol.spin == chart.spin) || throw(ArgumentError(
+        (same(sol.mass, chart.mass) && same(sol.spin, chart.spin)) || throw(ArgumentError(
             "the monopole's (M, a) = ($(sol.mass), $(sol.spin)) differ from the " *
             "background's ($(chart.mass), $(chart.spin))"))
     end
     if sol isa StaticRiver && chart isa River
-        sol.mass == chart.mass || throw(ArgumentError(
+        same(sol.mass, chart.mass) || throw(ArgumentError(
             "the monopole's M = $(sol.mass) differs from the river's $(chart.mass)"))
     end
     return nothing
@@ -335,4 +343,22 @@ boundary kernel and in `fill_by_coordinates!`.
         s -= β[i] * ∂u[i + 1]
     end
     return (u, s / αsγ)
+end
+
+"""
+    wave_residual(sol, bg::Background{D}, t, x) -> (□u, scale)
+
+`∂_μ(√−g g^{μν} ∂_ν u)` for the exact solution at time `t` and position `x`,
+by nested forward-mode differentiation of the flux form — independent of the
+coefficients and of [`exact_state`](@ref) — and the largest component of the
+flux, the scale `□u` is small against. Host-side; it allocates.
+"""
+function wave_residual(sol::ExactSolution, bg::Background{D}, t, x) where {D}
+    z = SVector{D + 1}(t, x...)
+    u(y) = exact_value(sol, bg, y[1], SVector{D}(ntuple(i -> y[i + 1], D)))
+    function F(y)
+        g = spacetime_metric(bg, y[1], SVector{D}(ntuple(i -> y[i + 1], D)))
+        return sqrt(-det(g)) * (inv(g) * ForwardDiff.gradient(u, y))
+    end
+    return tr(ForwardDiff.jacobian(F, z)), maximum(abs, F(z))
 end

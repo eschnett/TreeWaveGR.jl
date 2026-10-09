@@ -71,7 +71,25 @@ end
     @test dev.passes == host.passes
     @test dev.nregrids == host.nregrids
     @test Array(dev.u) ≈ host.u rtol = 1000 * eps(T)
-    @test dev.records[end].l2 ≈ host.records[end].l2 rtol = 1e-3
+    # The error is a difference of values near 1, so it carries their rounding:
+    # compared absolutely, at the type's precision.
+    @test abs(dev.records[end].l2 - host.records[end].l2) <= 100 * eps(T)
+end
+
+@testset "A time in Float64 does not reach a $DEVICE_T kernel" begin
+    # The exact state's callback converts the time on the host: converted in
+    # the kernel, a `Float64` time is a `Float64` operand that Metal refuses
+    # to compile.
+    T = DEVICE_T
+    case = DEVICE_CASES[3][2]
+    r = wave_errors(T, case; N=8, roots=1, t_end=0.125, backend=DEVICE_BACKEND)
+    @test r.l2 < 1e-3
+    forest = wave_forest(T, case; N=8, roots=1)
+    fs = state_fieldset(forest, 4; backend=DEVICE_BACKEND)
+    fill_exact!(fs, case, 0.5)
+    fill_coefficients!(TreeWaveGR.coefficient_fieldset(forest; backend=DEVICE_BACKEND),
+                       Background{3}(KerrSchild(1.0, 0.6)), 0.5)
+    @test dirichlet(case, forest, 0.5) isa CellBoundary
 end
 
 @testset "A field set comes back to the host" begin
