@@ -59,6 +59,10 @@ Metal has no `Float64`, so the device tests run in `Float32` there.
 
 ## Things that will bite
 
+- **Julia 1.13 is the floor**, and CI tests only 1.13. Erik raised it
+  from 1.11 on 2026-10-16, for all Tree* packages: supporting the older
+  versions slows development and is not useful at the moment. Do not add
+  `VERSION` checks or shims for anything older.
 - **The dependencies come from three places.** TreeAMR is in the General
   registry (`[compat]` `"0.2"`); SpacetimeMetrics, IMEXRungeKutta and
   TreeIOHDF5 are not, and are located by `[sources]` entries pointing at

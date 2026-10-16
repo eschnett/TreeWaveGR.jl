@@ -18,12 +18,12 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # Julia 1.11 is the floor: the unregistered dependencies are located
-        # by `[sources]` entries, a 1.11 key.
-        version: ["1.11", "1"]
+        # Julia 1.13 is the floor, and the only version tested: supporting
+        # older versions slows development and is not useful at the moment.
+        version: ["1.13"]
         os: [ubuntu-latest, macOS-latest]
         include:
-          - version: "1"
+          - version: "1.13"
             os: ubuntu-latest
             threads: 4
     steps:
