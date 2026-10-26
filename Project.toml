@@ -21,7 +21,7 @@ TreeIOHDF5 = {rev = "main", url = "https://github.com/eschnett/TreeIOHDF5.jl"}
 [compat]
 ForwardDiff = "1.3.3"
 IMEXRungeKutta = "1.3"
-KernelAbstractions = "0.9.42, 1"
+KernelAbstractions = "0.9.42"
 LinearAlgebra = "1.11"
 SpacetimeMetrics = "1.6"
 StaticArrays = "1"
