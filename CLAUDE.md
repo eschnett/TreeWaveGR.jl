@@ -63,10 +63,10 @@ Metal has no `Float64`, so the device tests run in `Float32` there.
   from 1.11 on 2026-10-16, for all Tree* packages: supporting the older
   versions slows development and is not useful at the moment. Do not add
   `VERSION` checks or shims for anything older.
-- **The dependencies come from three places.** TreeAMR is in the General
-  registry (`[compat]` `"0.2"`); SpacetimeMetrics, IMEXRungeKutta and
-  TreeIOHDF5 are not, and are located by `[sources]` entries pointing at
-  GitHub `main`. `Pkg.add` rewrites `Project.toml` and drops comments.
+- **The dependencies come from three places.** TreeAMR and TreeIOHDF5 are in
+  the General registry (`[compat]` `"0.2"` and `"0.1.0"`); SpacetimeMetrics
+  and IMEXRungeKutta are not, and are located by `[sources]` entries
+  pointing at GitHub `main`. `Pkg.add` rewrites `Project.toml` and drops comments.
   The local checkouts in `~/src/jl/` are *not* what is tested.
 - **Sampled and analytic coefficients agree to rounding, not bit for bit.**
   The fill kernel and the RHS kernel are different compilations, and

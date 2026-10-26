@@ -31,8 +31,8 @@ r = wave_errors(Float64, case; N = 16, roots = 1, q = 4, t_end = 1/2)
 
 ## Installing
 
-TreeWaveGR and three of its dependencies (SpacetimeMetrics,
-IMEXRungeKutta, TreeIOHDF5) are not registered; the package's
+TreeWaveGR and two of its dependencies (SpacetimeMetrics,
+IMEXRungeKutta) are not registered; the package's
 `[sources]` entries locate the latter. With Julia 1.13 or later (the
 floor),
 
