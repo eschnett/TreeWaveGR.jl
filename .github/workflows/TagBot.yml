@@ -1,0 +1,58 @@
+# Creates the git tag and GitHub release for each version registered in
+# the General registry. Without it a registration succeeds — the
+# registry resolves the tree hash from the commit — but nothing here
+# ever records which commit that was (as TreeAMR's 0.1.0 was registered
+# with no `v0.1.0` tag).
+name: TagBot
+
+on:
+  issue_comment:
+    types:
+      - created
+  workflow_dispatch:
+    inputs:
+      lookback:
+        description: "How many days back to look for untagged releases"
+        default: "3"
+
+permissions:
+  actions: read
+  checks: read
+  contents: write
+  deployments: read
+  issues: read
+  discussions: read
+  packages: read
+  pages: read
+  pull-requests: read
+  repository-projects: read
+  security-events: read
+  statuses: read
+
+jobs:
+  TagBot:
+    # The registry's bot comments on an issue in this repository to
+    # announce a registration; `workflow_dispatch` is the manual path,
+    # and is what picks up a version registered before this file existed.
+    if: github.event_name == 'workflow_dispatch' || github.actor == 'JuliaTagBot'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: JuliaRegistries/TagBot@v1
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          # This key is **required**, not an optimisation, because this
+          # repository has workflow files. GitHub refuses a ref pushed
+          # with an App token whose content includes
+          # `.github/workflows/*` unless the token carries the
+          # `workflows` scope, and `GITHUB_TOKEN` structurally cannot:
+          # there is no such key in a workflow's `permissions:` block.
+          # So every tag push over HTTPS fails with "refusing to allow a
+          # GitHub App to create or update workflow". A deploy key
+          # sidesteps this by pushing over SSH as a user rather than as
+          # an App.
+          #
+          # The secret must have a *write* deploy key registered on the
+          # repository to match; a `DOCUMENTER_KEY` with no matching
+          # deploy key authenticates as nobody and TagBot falls back to
+          # HTTPS, which is the failure above.
+          ssh: ${{ secrets.DOCUMENTER_KEY }}
