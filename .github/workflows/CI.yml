@@ -1,10 +1,24 @@
 name: CI
 
+# Two tiers, the same in every Tree* repository. A pull request runs the
+# Linux cells only, uninstrumented: the full suite has already run on the
+# author's machine (macOS, arm64), so what CI adds there is x86-64 Linux,
+# a clean environment and bounds checks. A push to `main`, the weekly
+# schedule and a manual dispatch run the whole matrix, macOS and coverage
+# included. Markdown-only changes run nothing, since no test reads them.
+# Tags are not tested: a release tags a commit that has passed on `main`.
 on:
   push:
     branches: [main]
-    tags: ["*"]
+    paths-ignore: ["**.md", "docs/**"]
   pull_request:
+    paths-ignore: ["**.md", "docs/**"]
+  # Weekly, for what changes without a push here: the registry, and the
+  # dependencies taken from `main` through `[sources]`. The Tree*
+  # repositories are staggered by 20 minutes so that their macOS cells do
+  # not queue behind each other (five run at once per account).
+  schedule:
+    - cron: "0 7 * * 1"
   workflow_dispatch:
 
 concurrency:
@@ -13,7 +27,7 @@ concurrency:
 
 jobs:
   test:
-    name: Julia ${{ matrix.version }} - ${{ matrix.os }} - ${{ matrix.threads || 1 }} thread(s)
+    name: Julia ${{ matrix.version }} - ${{ matrix.os }} - ${{ matrix.threads }} thread(s)
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -21,11 +35,24 @@ jobs:
         # Julia 1.13 is the floor, and the only version tested: supporting
         # older versions slows development and is not useful at the moment.
         version: ["1.13"]
-        os: [ubuntu-latest, macOS-latest]
+        # macOS only off pull requests (see `on:` above).
+        os: ${{ fromJSON(github.event_name == 'pull_request' && '["ubuntu-latest"]' || '["ubuntu-latest", "macOS-latest"]') }}
+        # `threads` is a matrix key, so that the threaded entry below
+        # overwrites it and adds a cell. Without the key the entry merged
+        # into the serial Linux cell, and there was no serial Linux cell
+        # until 2026-11-05.
+        threads: [1]
         include:
           - version: "1.13"
             os: ubuntu-latest
             threads: 4
+    # Coverage on one cell, macOS at one thread, and never on a pull
+    # request: it is bought once per push to `main`, where the badge reads
+    # it. Not a Linux cell: `--code-coverage` together with
+    # `--check-bounds=yes` miscompiles on GitHub's AVX-512 Zen 4/5 runners
+    # under Julia 1.13 (TreeGeneralizedHarmonic's CI.yml has the probes).
+    env:
+      COVERAGE: ${{ matrix.os == 'macOS-latest' && matrix.threads == 1 && github.event_name != 'pull_request' }}
     steps:
       - uses: actions/checkout@v7
       - uses: julia-actions/setup-julia@v3
@@ -39,13 +66,13 @@ jobs:
       - uses: julia-actions/julia-runtest@v1
         with:
           check_bounds: 'yes'
-          coverage: ${{ (matrix.threads || 1) == 1 }}
+          coverage: ${{ env.COVERAGE }}
         env:
-          JULIA_NUM_THREADS: ${{ matrix.threads || 1 }}
+          JULIA_NUM_THREADS: ${{ matrix.threads }}
       - uses: julia-actions/julia-processcoverage@v1
-        if: ${{ (matrix.threads || 1) == 1 }}
+        if: env.COVERAGE == 'true'
       - uses: codecov/codecov-action@v7
-        if: ${{ (matrix.threads || 1) == 1 }}
+        if: env.COVERAGE == 'true'
         with:
           files: lcov.info
           token: ${{ secrets.CODECOV_TOKEN }}
