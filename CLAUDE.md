@@ -63,6 +63,14 @@ Metal has no `Float64`, so the device tests run in `Float32` there.
   from 1.11 on 2026-10-16, for all Tree* packages: supporting the older
   versions slows development and is not useful at the moment. Do not add
   `VERSION` checks or shims for anything older.
+- **A pull request's CI runs only the Linux cells** (one and four
+  threads), without coverage; macOS and coverage run on `main`, weekly and
+  on dispatch, and Markdown-only changes and tags run nothing — two tiers,
+  the same in every Tree* repository since 2026-11-05 (TreeAMR's
+  `HISTORY.md`, "Development environment and CI", has why). So run the
+  full suite locally before opening a pull request: that is the macOS run
+  the pull request does not get. Until that change the serial Linux cell
+  did not run at all: the threaded `include` entry merged into it.
 - **The dependencies come from three places.** TreeAMR and TreeIOHDF5 are in
   the General registry (`[compat]` `"0.2"` and `"0.1.0"`); SpacetimeMetrics
   and IMEXRungeKutta are not, and are located by `[sources]` entries
